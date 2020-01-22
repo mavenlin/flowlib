@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 import copy
 from .base import *
+from .layers import ActivationNormalization
 
 
 class Shaping(Bijector):
@@ -54,7 +55,7 @@ class Augment(Bijector):
 
 
 class ActNorm(Bijector):
-  def __init__(self, channels, volume_preserving=False):
+  def __init__(self, channels):
     super().__init__()
     with tf.name_scope("act_norm"):
       self.act_norm = ActivationNormalization()
@@ -64,7 +65,7 @@ class ActNorm(Bijector):
     x, logdet = input.sample, input.logdet
     spatial_size = tf.cast(tf.reduce_prod(x.shape[1:-1]), tf.float32)
     self.act_norm.data_dependent_initialize(x)
-    log_scale = self._process_log_scale(self.act_norm.log_scale, False)
+    log_scale = self._process_log_scale(self.act_norm.log_scale)
     scale = tf.exp(log_scale)
     if not inverse:
       y = (x + self.act_norm.shift) * scale

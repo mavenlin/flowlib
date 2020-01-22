@@ -43,7 +43,7 @@ class InjectionFlow(tf.Module):
     super().__init__()
     self.data_shape = data_shape
     self.injector = injector
-    self.injector.layers.append(FlattenConcat())
+    self.injector.layers.append(Flat())
 
   def distributions(self):
     return tfd.Normal(loc=0., scale=1.)
