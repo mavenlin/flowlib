@@ -182,7 +182,7 @@ class Coupling(Bijector):
     x1, x2 = tf.split(x, [size_1, size_2], axis=-1)
     log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
     log_scale = self._process_log_scale(log_scale)
-    scale = tf.nn.softplus(log_scale)
+    scale = tf.nn.sigmoid(log_scale + 2.)
 
     if not inverse:
       x2 = (x2 + shift) * scale
