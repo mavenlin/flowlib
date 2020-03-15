@@ -440,7 +440,8 @@ class LogitTransform(Bijector):
       s = self.alpha + (1. - 2. * self.alpha) * y
       delta_logdet = tf.math.log(s - s * s) - tf.math.log(1. - 2. * self.alpha)
 
-    delta_logdet = tf.reduce_sum(delta_logdet, [1, 2, 3])
+    delta_logdet = tf.reduce_sum(tf.reshape(
+        delta_logdet, [tf.shape(x)[0], -1]), axis=-1)
     logdet += delta_logdet
     return copy_on_write(input, sample=y, logdet=logdet)
 
@@ -453,10 +454,10 @@ class Dequantizer(Bijector):
 
   def call(self, input, inverse=False):
     x, logdet = input.sample, input.logdet
-    epsilon = self.noise_distribution.sample(x.shape)
+    epsilon = self.noise_distribution.sample(tf.shape(x))
     logp_epsilon = self.noise_distribution.log_prob(epsilon)
     logp_epsilon = tf.reduce_sum(
-        tf.reshape(logp_epsilon, [logp_epsilon.shape[0], -1]), axis=1)
+        tf.reshape(logp_epsilon, [tf.shape(logp_epsilon)[0], -1]), axis=1)
     dequant_i = BijectorIO(sample=epsilon, logdet=logdet, facout=[], cond=x)
     dequant_o = self.bijector(dequant_i)
     return copy_on_write(dequant_o, logdet=dequant_o.logdet - logp_epsilon)

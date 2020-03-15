@@ -49,27 +49,27 @@ class InjectionFlow(tf.Module):
     return tfd.Normal(loc=0., scale=1.)
 
   def log_prob(self, x):
-    input = BijectorIO(x, tf.zeros([x.shape[0]]), [])
+    input = BijectorIO(x, tf.zeros([tf.shape(x)[0]]), [])
     output = self.injector(input)
     self.z_shape = output.sample.shape[1:]
     logprob = self.distributions().log_prob(output.sample)
-    logprob = tf.reshape(logprob, [logprob.shape[0], -1])
+    logprob = tf.reshape(logprob, [tf.shape(logprob)[0], -1])
     logprob = tf.reduce_sum(logprob, 1)
     logprob += output.logdet
     return logprob
 
   def logpz(self, x):
-    input = BijectorIO(x, tf.zeros([x.shape[0]]), [])
+    input = BijectorIO(x, tf.zeros([tf.shape(x)[0]]), [])
     output = self.injector(input)
     logprob = self.distributions().log_prob(output.sample)
-    logprob = tf.reshape(logprob, [logprob.shape[0], -1])
+    logprob = tf.reshape(logprob, [tf.shape(logprob)[0], -1])
     logprob = tf.reduce_mean(logprob, 1)
     return logprob
 
   def sample(self, batch_size):
     z = self.distributions().sample([batch_size, *self.z_shape])
     gen = self.injector(
-        BijectorIO(z, tf.zeros([z.shape[0]]), []), inverse=True)
+        BijectorIO(z, tf.zeros([tf.shape(z)[0]]), []), inverse=True)
     return gen.sample, gen.logdet
 
 
@@ -89,10 +89,10 @@ class NormalizingFlow(tf.Module):
                       scale=tf.exp(self.z_log_scale) * std_scale)
 
   def log_prob(self, x, cond=None, temperature=1.):
-    input = BijectorIO(x, tf.zeros([x.shape[0]]), [], cond=cond)
+    input = BijectorIO(x, tf.zeros([tf.shape(x)[0]]), [], cond=cond)
     output = self.bijector(input)
     logprob = self.distribution(temperature).log_prob(output.sample)
-    logprob = tf.reshape(logprob, [logprob.shape[0], -1])
+    logprob = tf.reshape(logprob, [tf.shape(logprob)[0], -1])
     logprob = tf.reduce_sum(logprob, 1)
     logprob += output.logdet
     return logprob
@@ -115,5 +115,5 @@ class NormalizingFlow(tf.Module):
   def sample(self, batch_size, cond=None, temperature=1.):
     z = self.distribution(temperature).sample(batch_size)
     gen = self.bijector(
-        BijectorIO(z, tf.zeros([z.shape[0]]), [], cond=cond), inverse=True)
+        BijectorIO(z, tf.zeros([tf.shape(z)[0]]), [], cond=cond), inverse=True)
     return gen.sample, gen.logdet
