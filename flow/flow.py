@@ -85,12 +85,15 @@ class NormalizingFlow(tf.Module):
 
   def distribution(self, temperature=1.):
     std_scale = tf.sqrt(temperature)
+    std_scale = tf.reshape(std_scale, [-1] + [1] * len(self.data_shape))
     return tfd.Normal(loc=self.z_loc,
-                      scale=tf.exp(self.z_log_scale) * std_scale)
+                      scale=tf.exp(tf.expand_dims(self.z_log_scale, axis=0)
+                      ) * std_scale)
 
   def log_prob(self, x, cond=None, temperature=1.):
     input = BijectorIO(x, tf.zeros([tf.shape(x)[0]]), [], cond=cond)
     output = self.bijector(input)
+    temperature = tf.broadcast_to(temperature, [tf.shape(x)[0]])
     logprob = self.distribution(temperature).log_prob(output.sample)
     logprob = tf.reshape(logprob, [tf.shape(logprob)[0], -1])
     logprob = tf.reduce_sum(logprob, 1)
@@ -113,7 +116,8 @@ class NormalizingFlow(tf.Module):
     return bits_per_dim
 
   def sample(self, batch_size, cond=None, temperature=1.):
-    z = self.distribution(temperature).sample(batch_size)
+    temperature = tf.broadcast_to(temperature, [batch_size])
+    z = self.distribution(temperature).sample()
     gen = self.bijector(
         BijectorIO(z, tf.zeros([tf.shape(z)[0]]), [], cond=cond), inverse=True)
     return gen.sample, gen.logdet
