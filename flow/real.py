@@ -5,7 +5,9 @@ import numpy as np
 import copy
 from .base import *
 from .layers import ActivationNormalization
-
+import tensorflow_probability as tfp
+tfd = tfp.distributions
+tfb = tfp.bijectors
 
 class Shaping(Bijector):
   """Base class of bijectors that only shapes the input without
@@ -182,7 +184,7 @@ class Coupling(Bijector):
     x1, x2 = tf.split(x, [size_1, size_2], axis=-1)
     log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
     log_scale = self._process_log_scale(log_scale)
-    scale = tf.nn.sigmoid(log_scale + 2.)
+    scale = tf.nn.sigmoid(log_scale + 2.) + 1e-5
 
     if not inverse:
       x2 = (x2 + shift) * scale
