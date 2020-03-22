@@ -75,7 +75,7 @@ class ActNorm(Bijector):
     else:
       y = x / scale - self.act_norm.shift
       logdet -= tf.reduce_sum(log_scale) * spatial_size
-    return BijectorIO(y, logdet, input.facout)
+    return copy_on_write(input, sample=y, logdet=logdet)
 
 
 class Permute(Bijector):
@@ -133,7 +133,7 @@ class SpatialToBatch(Bijector):
       spatial_dim = tf.reduce_prod(
           tf.cast(tf.shape(input.sample)[1:-1], tf.float32))
       logdet = tf.tile(input.logdet / spatial_dim, [spatial_dim])
-    return BijectorIO(sample, logdet, input.facout)
+    return copy_on_write(input, sample=sample, logdet=logdet)
 
 
 class BatchToSpatial(Bijector):
@@ -147,7 +147,7 @@ class BatchToSpatial(Bijector):
           input.sample, [-1, *self.spatial_size, input.sample.shape[-1]])
       logdet = tf.reshape(input.logdet, [-1, *self.spatial_size])
       logdet = tf.reduce_sum(logdet, axis=[1, 2])
-      return BijectorIO(sample, logdet, input.facout)
+      return copy_on_write(input, sample=sample, logdet=logdet)
     else:
       raise RuntimeError("Not Implemented")
 
