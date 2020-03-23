@@ -7,13 +7,14 @@ clip_value = 0.
 
 
 class BijectorIO(object):
-  def __init__(self, sample, logdet=None, facout=[], cond=None):
+  def __init__(self, sample, logdet=None, facout=[], cond=None, track=[]):
     if logdet is None:
       logdet = tf.zeros([sample.shape[0]])
     self.sample = sample
     self.logdet = logdet
     self.facout = facout
     self.cond = cond
+    self.track = { k: [] for k in track }
 
 
 def copy_on_write(bijector_io, **kwargs):
@@ -34,9 +35,12 @@ class Bijector(tf.Module):
     return log_scale
 
   def __call__(self, input, inverse=False):
+    output = self.call(input, inverse=inverse)
+    if "delta_logdet" in input.track:
+      if output.logdet is input.logdet:
+        input.track["delta_logdet"].append((self, None))
+      else:
+        input.track["delta_logdet"].append((self, output.logdet - input.logdet))
     if Bijector.debug:
-      output = self.call(input, inverse=inverse)
       tf.debugging.check_numerics(output.sample, f"{type(self)}")
-      return output
-    else:
-      return self.call(input, inverse=inverse)
+    return output
