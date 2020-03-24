@@ -83,8 +83,8 @@ class Permute(Bijector):
     super().__init__()
     perm = np.random.permutation(in_channels)
     inv_perm = np.arange(len(perm))[np.argsort(perm)]
-    self.perm = tf.constant(perm, dtype=tf.int32)
-    self.inv_perm = tf.constant(inv_perm, dtype=tf.int32)
+    self.perm = tf.Variable(perm, dtype=tf.int32, trainable=False)
+    self.inv_perm = tf.Variable(inv_perm, dtype=tf.int32, trainable=False)
     self.axis = axis
 
   def call(self, input, inverse=False):
