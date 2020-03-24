@@ -173,10 +173,11 @@ class ConditionalLinear(Bijector):
 
 
 class Coupling(Bijector):
-  def __init__(self, in_channels, network):
+  def __init__(self, in_channels, network, volume_preserving):
     super().__init__()
     self.in_channels = in_channels
     self.f = network
+    self.volume_preserving = volume_preserving
 
   def call(self, input, inverse=False):
     x, logdet = input.sample, input.logdet
@@ -185,6 +186,8 @@ class Coupling(Bijector):
     log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
     log_scale = self._process_log_scale(log_scale)
     scale = tf.nn.sigmoid(log_scale + 2.) + 1e-5
+    if self.volume_preserving:
+      scale = tf.ones_like(scale)
 
     if not inverse:
       x2 = (x2 + shift) * scale
