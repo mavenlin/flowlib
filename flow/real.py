@@ -173,7 +173,7 @@ class ConditionalLinear(Bijector):
 
 
 class Coupling(Bijector):
-  def __init__(self, in_channels, network, volume_preserving):
+  def __init__(self, in_channels, network, volume_preserving=False):
     super().__init__()
     self.in_channels = in_channels
     self.f = network
@@ -201,8 +201,26 @@ class Coupling(Bijector):
     return copy_on_write(input, sample=x, logdet=logdet)
 
 
+class tfbWrapper(Bijector):
+  def __init__(self, tfb):
+    super().__init__()
+    self.tfb = tfb
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    if not inverse:
+      y = self.tfb.forward(x)
+      x = tf.reshape(x, [tf.shape(x)[0], -1])
+      delta_logdet = self.tfb.forward_log_det_jacobian(x, event_ndims=1)
+    else:
+      y = self.tfb.inverse(x)
+      x = tf.reshape(x, [tf.shape(x)[0], -1])
+      delta_logdet = self.tfb.inverse_log_det_jacobian(x, event_ndims=1)
+    return copy_on_write(input, sample=y, logdet=logdet + delta_logdet)
+
+
 class Invertible1x1Conv2D(Bijector):
-  def __init__(self, channels, method="svd"):
+  def __init__(self, channels, method="lu"):
     super().__init__()
     self.method = method
     self.channels = channels
@@ -234,7 +252,7 @@ class Invertible1x1Conv2D(Bijector):
 
   def lu_call(self, x, logdet, spatial_size, inverse=False):
     l = self.l * self.l_mask + tf.eye(*self.w_shape, dtype=tf.float64)
-    log_s = self._process_log_scale(log_s)
+    log_s = self._process_log_scale(self.log_s)
     u = self.u * tf.transpose(self.l_mask) + tf.linalg.diag(
         self.sign_s * tf.exp(log_s))
     if not inverse:
