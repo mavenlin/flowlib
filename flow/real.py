@@ -320,15 +320,26 @@ class FactorOut(Shaping):
     super().__init__()
     self.keep_size = keep_size
     self.axis = axis
+    self.input_is_list = False
 
   def call(self, input, inverse=False):
     x = input.sample
     if not inverse:
-      out_size = x.shape[self.axis] - self.keep_size
-      x1, x2 = tf.split(x, [self.keep_size, out_size], axis=self.axis)
+      if isinstance(x, list):
+        self.input_is_list = True
+      else:
+        self.input_is_list = False
+      if not self.input_is_list:
+        out_size = x.shape[self.axis] - self.keep_size
+        x1, x2 = tf.split(x, [self.keep_size, out_size], axis=self.axis)
+      else:
+        x1, x2 = x
       return copy_on_write(input, sample=x1, facout=[x2] + input.facout)
     else:
-      x = tf.concat([x, input.facout[0]], axis=self.axis)
+      if not self.input_is_list:
+        x = tf.concat([x, input.facout[0]], axis=self.axis)
+      else:
+        x = [x, input.facout[0]]
       return copy_on_write(input, sample=x, facout=input.facout[1:])
 
 
@@ -484,3 +495,74 @@ class Dequantizer(Bijector):
     dequant_i = BijectorIO(sample=epsilon, logdet=logdet, facout=[], cond=x)
     dequant_o = self.bijector(dequant_i)
     return copy_on_write(dequant_o, logdet=dequant_o.logdet - logp_epsilon)
+
+
+class Chunking(Shaping):
+  def __init__(self, chunk_size):
+    super().__init__()
+    self.chunk_size = chunk_size
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    if not inverse:
+      x = tf.reshape(x, [tf.shape(x)[0], -1, self.chunk_size])
+      x = tf.transpose(x, [1, 0, 2])
+    else:
+      x = tf.transpose(x, [1, 0, 2])
+      x = tf.reshape(x, [tf.shape(x)[0], -1])
+    return copy_on_write(input, sample=x)
+
+
+class Unchunking(Shaping):
+  def __init__(self):
+    super().__init__()
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    if inverse:
+      x = tf.reshape(x, [tf.shape(x)[0], -1, self.chunk_size])
+      x = tf.transpose(x, [1, 0, 2])
+    else:
+      self.chunk_size = x.shape[-1]
+      x = tf.transpose(x, [1, 0, 2])
+      x = tf.reshape(x, [tf.shape(x)[0], -1])
+    return copy_on_write(input, sample=x)
+
+
+class Split(Shaping):
+  def __init__(self):
+    super().__init__()
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    if not inverse:
+      x1, x2 = tf.split(x, 2, axis=-1)
+      return copy_on_write(input, sample=[x1, x2])
+    else:
+      assert isinstance(x, list) and len(x) == 2
+      return copy_on_write(input, sample=tf.concat(x, axis=-1))
+
+class BlockCoupling(Bijector):
+  def __init__(self, net, swap=False):
+    super().__init__()
+    self.swap = swap
+    self.net = net
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    assert isinstance(x, list) and len(x) == 2
+    if not self.swap:
+      x1, x2 = x
+    else:
+      x2, x1 = x
+    ss = self.net(x1)
+    log_scale, shift = tf.split(ss, 2, axis=-1)
+    scale = tf.nn.softplus(log_scale) + 1e-5
+    if not inverse:
+      x2 = (x2 + shift) * scale
+      logdet += tf.reduce_sum(tf.math.log(scale), axis=[0, 2])
+    else:
+      x2 = x2 / scale - shift
+      logdet -= tf.reduce_sum(tf.math.log(scale), axis=[0, 2])
+    sample = [x2, x1] if self.swap else [x1, x2]
+    return copy_on_write(input, sample=sample, logdet=logdet)

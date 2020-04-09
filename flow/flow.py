@@ -121,13 +121,10 @@ class NormalizingFlow(tf.Module):
       dists = self.decomposed_distributions(temperature)
       output = self._bijector(input)
       logdet_dict = output.track["delta_logdet"]
-      logdets = [[]]
+      logdets = []
       for bj, logdet in logdet_dict:
-        if isinstance(bj, FactorOut):
-          logdets.append([])
-        elif logdet is not None:
-          logdets[-1].append(logdet)
-      logdets = [tf.add_n(li) for li in logdets]
+        if logdet is not None:
+          logdets.append(logdet)
       outputs = [output.sample] + output.facout
       logprobs = [tf.reduce_sum(tf.reshape(
           dist.log_prob(output), [tf.shape(output)[0], -1]), 1)

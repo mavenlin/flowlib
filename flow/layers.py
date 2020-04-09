@@ -39,3 +39,16 @@ class ActivationNormalization(tf.keras.layers.Layer):
       y = x
     y = y * tf.exp(self.log_scale)
     return y
+
+
+class BlockDense(tf.keras.layers.Layer):
+  def __init__(self, in_dim, out_dim, chunk_size, sigma=0.01):
+    super().__init__()
+    num_block = in_dim // chunk_size
+    self.weight = tf.Variable(
+      tf.random.normal([num_block, chunk_size, out_dim // num_block], 0., sigma))
+    self.bias = tf.Variable(tf.zeros([num_block, 1, out_dim // num_block]))
+
+  def call(self, x):
+    y = tf.linalg.matmul(x, self.weight) + self.bias
+    return y
