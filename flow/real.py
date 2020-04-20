@@ -172,6 +172,37 @@ class ConditionalLinear(Bijector):
     return copy_on_write(input, sample=x, logdet=logdet)
 
 
+class CouplingFast(Coupling):
+  def __init__(self, in_channels, network, volume_preserving=False, flip=False):
+    super().__init__(in_channels, network, volume_preserving)
+    self.flip = flip
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    assert isinstance(x, tuple)
+    x1, x2 = x
+    if self.flip:
+      x1, x2 = x2, x1
+    log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
+    log_scale = self._process_log_scale(log_scale)
+    scale = tf.nn.softplus(log_scale)
+    if self.volume_preserving:
+      scale = tf.ones_like(scale)
+
+    if not inverse:
+      x2 = (x2 + shift) * scale
+      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
+      logdet += tf.reduce_sum(tf.math.log(scale), axis=-1)
+    else:
+      x2 = x2 / scale - shift
+      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
+      logdet -= tf.reduce_sum(tf.math.log(scale), axis=-1)
+
+    if self.flip:
+      x1, x2 = x2, x1
+    return copy_on_write(input, sample=(x1, x2), logdet=logdet)
+
+
 class Coupling(Bijector):
   def __init__(self, in_channels, network, volume_preserving=False):
     super().__init__()
@@ -537,9 +568,9 @@ class Split(Shaping):
     x, logdet = input.sample, input.logdet
     if not inverse:
       x1, x2 = tf.split(x, 2, axis=-1)
-      return copy_on_write(input, sample=[x1, x2])
+      return copy_on_write(input, sample=(x1, x2))
     else:
-      assert isinstance(x, list) and len(x) == 2
+      assert isinstance(x, tuple) and len(x) == 2
       return copy_on_write(input, sample=tf.concat(x, axis=-1))
 
 class BlockCoupling(Bijector):
