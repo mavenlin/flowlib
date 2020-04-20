@@ -172,6 +172,35 @@ class ConditionalLinear(Bijector):
     return copy_on_write(input, sample=x, logdet=logdet)
 
 
+class Coupling(Bijector):
+  def __init__(self, in_channels, network, volume_preserving=False):
+    super().__init__()
+    self.in_channels = in_channels
+    self.f = network
+    self.volume_preserving = volume_preserving
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    size_1, size_2 = self.in_channels // 2, self.in_channels - self.in_channels // 2
+    x1, x2 = tf.split(x, [size_1, size_2], axis=-1)
+    log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
+    log_scale = self._process_log_scale(log_scale)
+    scale = tf.nn.sigmoid(log_scale + 2.) + 1e-5
+    if self.volume_preserving:
+      scale = tf.ones_like(scale)
+
+    if not inverse:
+      x2 = (x2 + shift) * scale
+      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
+      logdet += tf.reduce_sum(tf.math.log(scale), axis=-1)
+    else:
+      x2 = x2 / scale - shift
+      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
+      logdet -= tf.reduce_sum(tf.math.log(scale), axis=-1)
+    x = tf.concat([x1, x2], axis=-1)
+    return copy_on_write(input, sample=x, logdet=logdet)
+
+
 class CouplingFast(Coupling):
   def __init__(self, in_channels, network, volume_preserving=False, flip=False):
     super().__init__(in_channels, network, volume_preserving)
@@ -201,35 +230,6 @@ class CouplingFast(Coupling):
     if self.flip:
       x1, x2 = x2, x1
     return copy_on_write(input, sample=(x1, x2), logdet=logdet)
-
-
-class Coupling(Bijector):
-  def __init__(self, in_channels, network, volume_preserving=False):
-    super().__init__()
-    self.in_channels = in_channels
-    self.f = network
-    self.volume_preserving = volume_preserving
-
-  def call(self, input, inverse=False):
-    x, logdet = input.sample, input.logdet
-    size_1, size_2 = self.in_channels // 2, self.in_channels - self.in_channels // 2
-    x1, x2 = tf.split(x, [size_1, size_2], axis=-1)
-    log_scale, shift = tf.split(self.f(x1), 2, axis=-1)
-    log_scale = self._process_log_scale(log_scale)
-    scale = tf.nn.sigmoid(log_scale + 2.) + 1e-5
-    if self.volume_preserving:
-      scale = tf.ones_like(scale)
-
-    if not inverse:
-      x2 = (x2 + shift) * scale
-      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
-      logdet += tf.reduce_sum(tf.math.log(scale), axis=-1)
-    else:
-      x2 = x2 / scale - shift
-      scale = tf.reshape(scale, [tf.shape(scale)[0], -1])
-      logdet -= tf.reduce_sum(tf.math.log(scale), axis=-1)
-    x = tf.concat([x1, x2], axis=-1)
-    return copy_on_write(input, sample=x, logdet=logdet)
 
 
 class tfbWrapper(Bijector):
