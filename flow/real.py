@@ -35,6 +35,34 @@ class Flat(Bijector):
       return copy_on_write(input, sample=xs[0], facout=xs[1:])
 
 
+class Flatten(Shaping):
+  def __init__(self, num_batch_dims):
+    super().__init__()
+    self.num_batch_dims = num_batch_dims
+
+  def call(self, input, inverse=False):
+    x = input.sample
+    if not hasattr(self, "x_shape"):
+      self.x_shape = x.shape[1:]
+    if not inverse:
+      x = tf.reshape(x, [tf.shape(x)[0], -1])
+      return copy_on_write(input, sample=x)
+    else:
+      x = tf.reshape(x, [-1, *self.x_shape])
+      return copy_on_write(input, sample=x)
+
+
+class Unflatten(Shaping):
+  def __init__(self, flatten):
+    self.flatten = flatten
+
+  def call(self, input, inverse=False):
+    if not inverse:
+      return self.flatten(input, inverse=True)
+    else:
+      return self.flatten(input, inverse=False)
+
+
 class Augment(Bijector):
   def __init__(self, num_channels):
     super().__init__()
@@ -230,6 +258,40 @@ class CouplingFast(Coupling):
     if self.flip:
       x1, x2 = x2, x1
     return copy_on_write(input, sample=(x1, x2), logdet=logdet)
+
+
+class Transpose(Shaping):
+  def __init__(self, order):
+    self.order = order
+    self.reverse_order = np.argsort(order)
+    assert order[0] == 0, "transpose batch"
+
+  def call(self, input, inverse=False):
+    x = input.sample
+    if not inverse:
+      x = tf.transpose(x, self.order)
+      return copy_on_write(input, sample=x)
+    else:
+      x = tf.transpose(x, self.reverse_order)
+      return copy_on_write(input, sample=x)
+
+
+class Map(Bijector):
+  def __init__(self, map_ndims, bijector):
+    self.map_ndims = map_ndims
+    self.bijector = bijector
+
+  def call(self, input, inverse=False):
+    x, logdet = input.sample, input.logdet
+    batch_dims = x.shape[:self.map_ndims]
+    x = tf.reshape(x, [-1, *x.shape[self.map_ndims:]])
+    delta_logdet = tf.zeros([tf.shape(x)[0]])
+    output = self.bijector(BijectorIO(sample=x, logdet=delta_logdet), inverse)
+    y, delta_logdet = output.sample, output.logdet
+    logdet += tf.reduce_sum(tf.reshape(
+        delta_logdet, [tf.shape(logdet)[0], -1]), axis=1)
+    y = tf.reshape(y, [-1, *batch_dims[1:], *y.shape[1:]])
+    return copy_on_write(input, sample=y, logdet=logdet)
 
 
 class tfbWrapper(Bijector):

@@ -160,9 +160,24 @@ class NormalizingFlow(tf.Module):
         log_prob = tf.reduce_mean(log_prob)
       return bpd(log_prob)
 
-  def sample(self, batch_size, cond=None, temperature=1.):
+  def sample(self, batch_size=1, cond=None, temperature=1.):
     temperature = tf.broadcast_to(temperature, [batch_size])
     z = self.distribution(temperature).sample()
     gen = self.bijector(
         BijectorIO(z, tf.zeros([tf.shape(z)[0]]), [], cond=cond), inverse=True)
-    return gen.sample, gen.logdet
+    return gen.sample
+
+  def entropy(self):
+    base_ent = self.distribution().entropy()
+    sample = self.sample(16)
+    output = self.bijector(BijectorIO(sample=sample, logdet=tf.zeros([16])))
+    return tf.reduce_sum(base_ent) + tf.reduce_mean(output.logdet, keepdims=True)
+
+  def cross_entropy(self, other):
+    sample = self.sample(16)
+    logprob = other.log_prob(sample)
+    logprob = tf.reduce_mean(logprob, keepdims=True)
+    return - logprob
+
+  def kl_divergence(self, other):
+    return self.cross_entropy(other) - self.entropy()
